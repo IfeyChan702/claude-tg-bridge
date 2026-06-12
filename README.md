@@ -2,7 +2,7 @@
 
 **Telegram ⇆ Claude Code session 雙向橋接** — 人唔喺電腦旁邊,用 Telegram 繼續指揮 Claude Code 做嘢。
 
-> **TL;DR (English)**: A two-way bridge between a Claude Code session and Telegram. Claude's replies are auto-pushed to your private TG bot via a Stop hook; anything you type in TG becomes a session event (via a long-polling Monitor) that wakes Claude to continue the task. Pure Python stdlib, zero dependencies, talks only to `api.telegram.org`. Install: `/plugin marketplace add IfeyChan702/claude-tg-bridge` → `/plugin install tg-bridge@claude-tg-bridge` → tell Claude "set up the telegram bridge".
+> **TL;DR (English)**: A two-way bridge between a Claude Code session and Telegram. Claude's replies are auto-pushed to your private TG bot via a Stop hook; anything you type in TG becomes a session event (via a long-polling Monitor) that wakes Claude to continue the task. Multi-bot support: register several bots, one bot drives one session, so multiple sessions can run in parallel from separate TG chats. Pure Python stdlib, zero dependencies, talks only to `api.telegram.org`. Install: `/plugin marketplace add IfeyChan702/claude-tg-bridge` → `/plugin install tg-bridge@claude-tg-bridge` → tell Claude "set up the telegram bridge".
 
 ---
 
@@ -13,6 +13,7 @@ Claude Code 做緊長任務,你要出門 / 開會 / 瞓覺,但任務中途要你
 - 📲 Claude 每講完一輪,**自動推**最後嗰條回覆去你嘅 TG bot
 - ⌨️ 你喺 TG 打嘅**每句嘢**,即時變成 session 事件,叫醒 Claude 繼續做
 - 🔁 返到電腦直接喺 Claude Code 打字,兩邊無縫接力
+- 🤖 **多 bot**:登記幾隻 bot,一隻 bot 管一個 session — 幾個 session 同時運行,TG 度幾個 chat 分開指揮,唔會撈亂
 
 ## 架構
 
@@ -73,17 +74,18 @@ Claude 會跟住 skill 帶你行晒以下流程,你只需要做兩樣嘢:
 
 | 命令 | 作用 |
 |------|------|
-| `setup <token>` | 一次性:存 token、自動偵測你嘅 chat_id、發確認訊息 |
-| `bind` | 將「當前 project 最新活動嘅 session」綁做轉發目標 |
-| `unbind` | 解除綁定(出站即停) |
-| `send <text>` | 手動發訊息去 TG(測試用;超長自動分段) |
-| `poll` | 長輪詢 getUpdates,每條入站訊息印一行(俾 Monitor 用) |
-| `hook` | 俾 Stop / Notification hook 調用(stdin 收 JSON) |
+| `bots` | 列出登記咗嘅 bot 同各自綁住邊個 session(JSON) |
+| `setup <token> [名]` | 登記新 bot(預設用 bot username 做名)、自動偵測你嘅 chat_id、發確認訊息 |
+| `bind [名]` | 將「當前 project 最新活動嘅 session」綁去呢隻 bot(一 session 一 bot,自動解除舊綁定) |
+| `unbind [名]` | 解除綁定(出站即停) |
+| `send [--bot 名] <text>` | 手動發訊息去 TG(測試用;超長自動分段) |
+| `poll [名]` | 長輪詢 getUpdates,每條入站訊息印一行(俾 Monitor 用) |
+| `hook` | 俾 Stop / Notification hook 調用(按 session_id 自動搵返認領嘅 bot) |
 
-檔案位置:
+`[名]` 喺只登記咗一隻 bot 時可以省略。檔案位置:
 
-- `~/.claude/tg_bridge.json` — token + chat_id + 綁定嘅 session_id(chmod 600)
-- `~/.claude/tg_bridge_state.json` — poll 進度(getUpdates offset)
+- `~/.claude/tg_bridge.json` — bots 表:每隻 bot 嘅 token + chat_id + 綁定 session(chmod 600)
+- `~/.claude/tg_bridge_state.<bot名>.json` — 每隻 bot 自己嘅 poll 進度(getUpdates offset)
 
 ## 安全模型
 
@@ -96,7 +98,10 @@ Claude 會跟住 skill 帶你行晒以下流程,你只需要做兩樣嘢:
 ## 常見問題
 
 **Q: 新 session 點接手?**
-A: 喺新 session 講「開 TG bridge」— config 只記一個目標 session,bind 後 TG 自動切過去,舊 session 嘅轉發即停。注意舊 session 嘅監聽要停咗(閂咗舊 session 或者叫佢停),同一個 bot 只可以有一個 poll。
+A: 喺新 session 講「開 TG bridge」— Claude 會用 `bots` 查返你登記過嘅 bot 俾你揀。揀咗一隻已綁住舊 session 嘅 bot,Claude 會先提醒你「會斷開舊 session 嘅轉發」等你確認。注意舊 session 嘅監聽要停咗(閂咗舊 session 或者叫佢停),同一隻 bot 只可以有一個 poll。
+
+**Q: 兩個 session 可唔可以同時運行?**
+A: 可以 — 開兩隻 bot(@BotFather 度 `/newbot` 多一次),每隻 bot 綁自己嘅 session。TG 度係兩個獨立 chat,邊個 chat 指揮邊個 session,清清楚楚。Bot 數量冇上限,Telegram 開 bot 免費。
 
 **Q: session 死咗(電腦重啓 / app 閂咗)點算?**
 A: 入站監聽寄生喺 session 入面,session 冇咗 TG 訊息就冇人接。遙距重生:用 Claude 官方手機 app 嘅 remote 功能開個新 session,叫佢「開 TG bridge」接手。官方鏈接做點火器,TG 做日常通道。
