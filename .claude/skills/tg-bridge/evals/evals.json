@@ -1,0 +1,24 @@
+{
+  "skill_name": "tg-bridge",
+  "_note": "測試用例已準備好但未跑 — 呢個 skill 嘅操作有真實副作用(會搶現役 bridge 嘅 getUpdates、改寫 ~/.claude/tg_bridge.json、重綁 session),唔適合喺生產 bridge 運行期間用 subagent 實跑。要跑 eval 時:用一個測試 bot token + 暫停現役 poll Monitor。",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我想喺手機 telegram 度繼續指揮你做嘢,幫我裝好成套橋接,我未有 bot",
+      "expected_output": "行「首次安裝」流程:指導用 BotFather 開 bot、等 token、setup、merge hooks 入 .claude/settings.json(唔覆蓋現有內容)、bind、起 persistent Monitor,並講明 hook 可能要重開 session 先生效",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "開返 TG bridge",
+      "expected_output": "識別為「日常開啓」:只做 bind + 起 Monitor(poll),唔會重走 BotFather/setup 流程,並確認雙向通道",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我喺 TG 收唔到你嘅回覆,但我發嘢你又收到",
+      "expected_output": "按故障排查:判斷係出站問題 — 檢查 hook 有冇生效(settings 建立時機)、有冇 bind 啱 session,建議 /hooks 或重開 session,期間手動 send 代發",
+      "files": []
+    }
+  ]
+}

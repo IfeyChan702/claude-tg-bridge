@@ -1,0 +1,1 @@
+plugins/tg-bridge/skills/tg-bridge/scripts/tg_bridge.py
