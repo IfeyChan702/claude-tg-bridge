@@ -62,6 +62,8 @@ description: 查 App Store Connect 嘅狀態 — build 處理進度、App Store 
    ```json
    { "key_id": "XXXXXXXXXX", "issuer_id": "xxxx-...", "p8_path": "~/.claude/AuthKey_XXXXXX.p8" }
    ```
+   - **Team Key**(預設,Admin 生成):`issuer_id` 喺 ASC API 頁面**頂部**(從來唔喺 `.p8` 檔內)。
+   - **Individual Key**(個人金鑰):**冇** `issuer_id` —— config 留空或唔寫嗰行,tool 會自動改用 `sub:"user"`。
 5. 跑 `asc.py apps` 驗證 —— 見到真實 app 列表就成。
 
 金鑰同 config 喺 `~/.claude/`(repo 外),`.gitignore` 已封 `*.p8` / `asc_config.json`,唔會公開。
@@ -71,6 +73,7 @@ description: 查 App Store Connect 嘅狀態 — build 處理進度、App Store 
 | 症狀 | 處理 |
 |------|------|
 | ❌ 未設定 | 行上面首次設定 |
-| API 401 | key_id / issuer_id 唔啱,或 .p8 同 Key ID 對唔上 |
+| API 401 | key_id / issuer_id 唔啱,或 .p8 同 Key ID 對唔上;Team Key 漏咗 issuer_id 亦會 401 |
 | API 403 | 金鑰權限唔夠 → 喺 ASC 將 key role 調高 |
-| 缺 PyJWT/cryptography | `.venv/bin/python3 -m pip install pyjwt cryptography` |
+| CERTIFICATE_VERIFY_FAILED | Homebrew Python 唔用系統憑證 → 已靠 certifi 解決;缺就 `pip install certifi` |
+| 缺 PyJWT/cryptography/certifi | `.venv/bin/python3 -m pip install pyjwt cryptography certifi` |

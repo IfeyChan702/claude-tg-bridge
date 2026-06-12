@@ -26,6 +26,7 @@
 """
 import json
 import os
+import ssl
 import sys
 import time
 import urllib.error
@@ -36,6 +37,14 @@ import jwt  # PyJWT
 
 CONFIG_PATH = os.path.expanduser("~/.claude/asc_config.json")
 API_BASE = "https://api.appstoreconnect.apple.com"
+
+# Homebrew Python 唔用系統憑證庫,要明確指向 certifi 個 CA bundle,
+# 否則 urlopen 會 CERTIFICATE_VERIFY_FAILED。
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _SSL_CTX = ssl.create_default_context()
 
 
 def die(msg, code=1):
@@ -50,7 +59,8 @@ def load_config():
             "金鑰喺 ASC → Users and Access → Integrations → App Store Connect API 生成。"
             % CONFIG_PATH)
     cfg = json.load(open(CONFIG_PATH, encoding="utf-8"))
-    for k in ("key_id", "issuer_id", "p8_path"):
+    # issuer_id 只有 Team Key 先有;Individual Key 唔需要
+    for k in ("key_id", "p8_path"):
         if not cfg.get(k):
             die("❌ config 缺少 %r(喺 %s)" % (k, CONFIG_PATH))
     if not os.path.exists(os.path.expanduser(cfg["p8_path"])):
@@ -59,16 +69,22 @@ def load_config():
 
 
 def make_token(cfg):
-    """簽一個 20 分鐘有效嘅 ES256 JWT(ASC 上限 20 分鐘)。"""
+    """簽一個 20 分鐘有效嘅 ES256 JWT(ASC 上限 20 分鐘)。
+
+    Team Key:有 issuer_id → 用 iss claim。
+    Individual Key:冇 issuer_id → 用 sub="user"(Apple 規定)。
+    """
     private_key = open(os.path.expanduser(cfg["p8_path"])).read()
     now = int(time.time())
-    return jwt.encode(
-        {"iss": cfg["issuer_id"], "iat": now, "exp": now + 1200,
-         "aud": "appstoreconnect-v1"},
-        private_key,
-        algorithm="ES256",
-        headers={"kid": cfg["key_id"], "typ": "JWT"},
-    )
+    issuer = cfg.get("issuer_id", "").strip()
+    placeholder = (not issuer) or issuer.startswith("貼你")
+    claims = {"iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}
+    if placeholder:
+        claims["sub"] = "user"          # Individual Key
+    else:
+        claims["iss"] = issuer          # Team Key
+    return jwt.encode(claims, private_key, algorithm="ES256",
+                      headers={"kid": cfg["key_id"], "typ": "JWT"})
 
 
 def api_get(token, path, **params):
@@ -77,7 +93,7 @@ def api_get(token, path, **params):
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=_SSL_CTX) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")
