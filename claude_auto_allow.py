@@ -29,7 +29,9 @@ from ApplicationServices import (
 
 TARGET_APP = "Claude"
 # 比對 AXTitle + AXDescription;英文唔分大小寫,中文直接子串比對
-TARGET_TEXTS = ["always allow", "allow always", "一律允許", "始終允許", "总是允许","Always"]
+TARGET_TEXTS = ["always allow", "allow always", "一律允許", "始終允許", "总是允许", "Allow for"]
+# 註:唔好加裸 "Always" — 大細楷無關下會誤中任何含 "always" 嘅 menu item / 文字。
+# 真正嘅「Always allow」掣由上面有空格嘅 "always allow"/"allow always" 已經 cover。
 
 # --- macOS 系統 TCC 權限彈窗(「"claude" wants access to control "Google Chrome"」)---
 # 呢類彈窗唔屬於 Claude app,係由系統進程顯示,所以要另外掃
@@ -44,6 +46,12 @@ SCAN_INTERVAL = 10
 MAX_DEPTH = 60
 
 _seen_labels = set()  # 已見過嘅互動元素標籤(只印新出現嘅,方便睇到彈窗按鈕真名)
+HEARTBEAT_INTERVAL = 1800  # 每 30 分鐘一行心跳;其餘只記實際撳咗乜,免得 log 塞爆
+
+
+def log(msg):
+    """帶時間戳、即時 flush — 只記真正重要嘅事(撳咗乜、警告、心跳)。"""
+    print("[%s] %s" % (time.strftime("%m-%d %H:%M:%S"), msg), flush=True)
 
 
 def ax_get(elem, attr):
@@ -86,7 +94,7 @@ def walk(elem, depth=0):
 
 def label_matches(label):
     low = label.lower()
-    return any(t in low for t in TARGET_TEXTS)
+    return any(t.lower() in low for t in TARGET_TEXTS)  # 比對大細楷無關,TARGET_TEXTS 點 case 都得
 
 
 def scan_permission_dialogs(verbose=False):
@@ -116,10 +124,10 @@ def scan_permission_dialogs(verbose=False):
                     continue
                 err = AXUIElementPerformAction(elem, "AXPress")
                 if err == 0:
-                    print("✅ 已喺權限彈窗撳 %r: %r" % (label, blob[:80]))
+                    log("✅ 已喺權限彈窗撳 %r: %s" % (label, blob[:80]))
                     clicked = True
                 else:
-                    print("⚠️ 權限彈窗撳 %r 失敗 (AXError %d)" % (label, err))
+                    log("⚠️ 權限彈窗撳 %r 失敗 (AXError %d)" % (label, err))
                 break
     return clicked
 
@@ -146,12 +154,12 @@ def scan_and_click(verbose=False):
                 if "AXPress" in actions:
                     err = AXUIElementPerformAction(elem, "AXPress")
                     if err == 0:
-                        print("✅ 已點擊 %s: %r" % (role, label))
+                        log("✅ 已點擊 %s: %r" % (role, label))
                         clicked = True
                     else:
-                        print("⚠️ 搵到目標但點擊失敗 (AXError %d): %r" % (err, label))
+                        log("⚠️ 搵到目標但點擊失敗 (AXError %d): %r" % (err, label))
                 else:
-                    print("⚠️ 目標唔支援 AXPress (actions=%s): %r" % (actions, label))
+                    log("⚠️ 目標唔支援 AXPress (actions=%s): %r" % (actions, label))
         if verbose:
             print("pid %d: 掃描咗 %d 個元素%s" % (pid, count, ",已點擊 ✅" if clicked else ""))
     return clicked or dialog_clicked
@@ -191,13 +199,16 @@ def main():
         scan_and_click(verbose=True)
         return
 
-    print("開始監控 Claude(每 %d 秒掃一次,Ctrl+C 停止)..." % SCAN_INTERVAL)
-    print("(🆕 = 新出現嘅互動元素 — 彈窗一出就會見到佢啲按鈕真名)")
+    log("開始監控 Claude(每 %d 秒掃一次;之後只記實際撳咗嘅動作同每 30 分鐘心跳)" % SCAN_INTERVAL)
+    last_beat = time.time()
     while True:
         try:
-            scan_and_click(verbose=True)
+            scan_and_click(verbose=False)
         except Exception as exc:
-            print("發生錯誤: %s" % exc)
+            log("發生錯誤: %s" % exc)
+        if time.time() - last_beat >= HEARTBEAT_INTERVAL:
+            log("仍在監控中…")
+            last_beat = time.time()
         time.sleep(SCAN_INTERVAL)
 
 
