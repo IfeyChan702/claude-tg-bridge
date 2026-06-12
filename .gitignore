@@ -2,3 +2,5 @@
 .idea/
 __pycache__/
 *.pyc
+*.p8
+asc_config.json
