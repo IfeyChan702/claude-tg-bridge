@@ -57,6 +57,22 @@ def api(token, method, **params):
         return json.load(resp)
 
 
+def download_media(token, media):
+    """下載 TG 媒體(video/document/photo)到 ~/Downloads/tg_bridge/,回傳本地路徑或錯誤描述。"""
+    try:
+        info = api(token, "getFile", file_id=media["file_id"]).get("result", {})
+        fp = info.get("file_path")
+        if not fp:
+            return "file_id=%s(getFile 冇 file_path)" % media["file_id"]
+        dest_dir = os.path.expanduser("~/Downloads/tg_bridge")
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, media.get("file_name") or os.path.basename(fp))
+        urllib.request.urlretrieve("https://api.telegram.org/file/bot%s/%s" % (token, fp), dest)
+        return dest
+    except Exception as exc:
+        return "下載失敗(%s)— 檔案可能超過 Bot API 20MB 限制" % exc
+
+
 def load_cfg():
     """讀 config,順手將舊版單 bot 格式遷移成 bots 表。"""
     cfg = load_json(CONFIG_PATH)
@@ -111,8 +127,8 @@ def send_text(bot, text):
 
 
 def project_transcript_dir():
-    # Claude Code 將 cwd 嘅 / 換成 - 做 project 目錄名
-    return os.path.expanduser("~/.claude/projects/") + os.getcwd().replace("/", "-")
+    # Claude Code 將 cwd 嘅 / . _ 全部換成 - 做 project 目錄名
+    return os.path.expanduser("~/.claude/projects/") + os.getcwd().replace("/", "-").replace(".", "-").replace("_", "-")
 
 
 def newest_session_id():
@@ -244,6 +260,11 @@ def cmd_poll(name=None):
             text = (msg.get("text") or "").strip()
             if text:
                 print("📩 TG 回覆: %s" % text, flush=True)
+            media = msg.get("video") or msg.get("document") or (msg.get("photo") or [{}])[-1]
+            if media.get("file_id"):
+                dest = download_media(bot["token"], media)
+                caption = (msg.get("caption") or "").strip()
+                print("📎 TG 媒體已收: %s%s" % (dest, ("(caption: %s)" % caption) if caption else ""), flush=True)
 
 
 def last_assistant_text(transcript_path):
