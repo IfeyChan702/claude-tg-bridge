@@ -1,137 +1,140 @@
 # claude-tg-bridge
 
-**Telegram ⇆ Claude Code session 雙向橋接** — 人唔喺電腦旁邊,用 Telegram 繼續指揮 Claude Code 做嘢。
+**Control Claude Code from your phone, through Telegram.**
 
-> **TL;DR (English)**: A two-way bridge between a Claude Code session and Telegram. Claude's replies are auto-pushed to your private TG bot via a Stop hook; anything you type in TG becomes a session event (via a long-polling Monitor) that wakes Claude to continue the task. Multi-bot support: register several bots, one bot drives one session, so multiple sessions can run in parallel from separate TG chats. Pure Python stdlib, zero dependencies, talks only to `api.telegram.org`. Install: `/plugin marketplace add IfeyChan702/claude-tg-bridge` → `/plugin install tg-bridge@claude-tg-bridge` → tell Claude "set up the telegram bridge".
+English | [中文](README.zh.md)
 
----
+A two-way bridge between a Claude Code session and Telegram: Claude's replies are pushed to your private TG bot the moment each turn ends, and anything you type in Telegram wakes the session and continues the task — as if you were typing at the keyboard.
 
-## 呢個 plugin 解決咩問題
+Pure Python stdlib. Zero dependencies. Talks only to `api.telegram.org`.
 
-Claude Code 做緊長任務,你要出門 / 開會 / 瞓覺,但任務中途要你拍板、補資料、改方向。官方手機 app 可以鏈接 session,但如果你日常生活喺 Telegram,呢個 plugin 令你:
+## Why
 
-- 📲 Claude 每講完一輪,**自動推**最後嗰條回覆去你嘅 TG bot
-- ⌨️ 你喺 TG 打嘅**每句嘢**,即時變成 session 事件,叫醒 Claude 繼續做
-- 🔁 返到電腦直接喺 Claude Code 打字,兩邊無縫接力
-- 🤖 **多 bot**:登記幾隻 bot,一隻 bot 管一個 session — 幾個 session 同時運行,TG 度幾個 chat 分開指揮,唔會撈亂
+Claude Code is running a long task, but you need to leave — a meeting, a commute, sleep. The task still needs you: to make a call, paste a token, change direction. With this plugin you just keep the conversation going from Telegram, and when you're back at the computer you type in Claude Code again. Seamless hand-off, both ways.
 
-## 架構
+- 📲 Claude's final reply of every turn is **auto-pushed** to your private bot (permission requests too)
+- ⌨️ Every message you send in TG becomes a **session event** that wakes Claude to continue
+- 🔁 Walk back to the keyboard and just keep typing — no mode switching
+- 🤖 **Multi-bot**: register several bots, one bot drives one session — run multiple sessions in parallel from separate TG chats
+
+## How it works
 
 ```
-┌─────────────────────────── 你部電腦 ───────────────────────────┐
-│                                                                │
-│  Claude Code session                                           │
-│  ├── 出站:Stop / Notification hook(plugin 自動掛)            │
-│  │     每輪結束 → tg_bridge.py hook → 讀 transcript 最後一條    │
-│  │     assistant 訊息 → sendMessage 去你嘅 bot                  │
-│  │                                                             │
-│  └── 入站:Monitor 工具長跑 tg_bridge.py poll                   │
-│        長輪詢 getUpdates → 每條 TG 訊息印一行 stdout             │
-│        → 變成 session 事件 → 自動叫醒 Claude                    │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
-                              ▲ ▼ 只同 api.telegram.org 通訊
-                        ┌──────────────┐
-                        │ 你嘅 TG bot  │ ←→ 📱 你部手機
-                        └──────────────┘
+┌────────────────────────── your machine ──────────────────────────┐
+│                                                                   │
+│  Claude Code session                                              │
+│  ├── outbound: Stop / Notification hooks (auto-wired by plugin)   │
+│  │     turn ends → tg_bridge.py hook → read the last assistant    │
+│  │     message from the local transcript → sendMessage to bot     │
+│  │                                                                │
+│  └── inbound: a persistent Monitor runs tg_bridge.py poll         │
+│        long-polls getUpdates → each TG message = one stdout line  │
+│        → becomes a session event → wakes Claude                   │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+                          ▲ ▼ only talks to api.telegram.org
+                       ┌──────────────┐
+                       │ your TG bot  │ ←→ 📱 your phone
+                       └──────────────┘
 ```
 
-兩個方向都唔掂任何 LLM API — 出站係讀本地 transcript 檔,入站係標準 Telegram Bot API 長輪詢。
+Neither direction touches any LLM API — outbound reads the local transcript file, inbound is the standard Telegram Bot API long poll.
 
-## 安裝
+## Install
 
-喺 Claude Code 入面:
+Inside Claude Code:
 
 ```
 /plugin marketplace add IfeyChan702/claude-tg-bridge
 /plugin install tg-bridge@claude-tg-bridge
 ```
 
-裝完**重開一個 session**(等 plugin hooks 載入),然後同 Claude 講:
+Restart your session (so the plugin's hooks load), then tell Claude:
 
-> 裝 tg bridge
+> set up the telegram bridge
 
-Claude 會跟住 skill 帶你行晒以下流程,你只需要做兩樣嘢:
+Claude walks you through the rest. You only do two things:
 
-1. 去 TG 搵 **@BotFather** → `/newbot` → 攞 token,貼俾 Claude
-2. **同你個新 bot 講一句嘢**(咩都得 — 唔講嘢 Claude 偵測唔到你嘅 chat_id)
+1. Open **@BotFather** in Telegram → `/newbot` → paste the token to Claude
+2. **Send your new bot any message** (otherwise your chat_id can't be detected)
 
-之後 Claude 自動完成:`setup`(寫 config + 認 chat_id)→ `bind`(綁定當前 session)→ 起監聽 → 雙向測試。
+Claude then runs `setup` (stores config, detects your chat_id) → `bind` (claims the current session) → starts the listener → tests both directions.
 
-## 日常使用
+## Daily use
 
-| 情景 | 做法 |
-|------|------|
-| 開新 session 想接通 TG | 同 Claude 講「**開 TG bridge**」(佢會 bind + 起監聽) |
-| 出門前 | 確認 bridge 開咗,直接走 — Claude 答完嘢會推去 TG |
-| 喺 TG 指揮 | 直接打字,同喺電腦打無分別;長報告 Claude 會自動分段推送 |
-| 返到電腦 | 直接喺 Claude Code 打字,唔使切換咩模式 |
-| 停用 | 叫 Claude「停咗 TG bridge」(unbind + 停監聽) |
+| Scenario | What to do |
+|----------|-----------|
+| New session, want TG connected | Tell Claude "**enable the tg bridge**" — it lists your registered bots, asks which to use, warns if that bot is bound to another session |
+| Leaving the computer | Nothing — replies are already being pushed |
+| Driving from TG | Just type; long reports are auto-split (4096-char limit handled) |
+| Back at the keyboard | Just type in Claude Code |
+| Two sessions in parallel | Create a second bot, bind one per session — two separate TG chats, zero crosstalk |
+| Stop | Tell Claude "stop the tg bridge" |
 
-## Script 子命令參考
+## Command reference
 
-橋接核心係一個零依賴嘅 Python script(`skills/tg-bridge/scripts/tg_bridge.py`):
+The core is one zero-dependency script (`skills/tg-bridge/scripts/tg_bridge.py`):
 
-| 命令 | 作用 |
-|------|------|
-| `bots` | 列出登記咗嘅 bot 同各自綁住邊個 session(JSON) |
-| `setup <token> [名]` | 登記新 bot(預設用 bot username 做名)、自動偵測你嘅 chat_id、發確認訊息 |
-| `bind [名]` | 將「當前 project 最新活動嘅 session」綁去呢隻 bot(一 session 一 bot,自動解除舊綁定) |
-| `unbind [名]` | 解除綁定(出站即停) |
-| `send [--bot 名] <text>` | 手動發訊息去 TG(測試用;超長自動分段) |
-| `poll [名]` | 長輪詢 getUpdates,每條入站訊息印一行(俾 Monitor 用) |
-| `hook` | 俾 Stop / Notification hook 調用(按 session_id 自動搵返認領嘅 bot) |
+| Command | What it does |
+|---------|--------------|
+| `bots` | List registered bots and which session each one is bound to (JSON) |
+| `setup <token> [name]` | Register a bot (defaults to its username), detect your chat_id, send a confirmation |
+| `bind [name]` | Bind the project's most recently active session to this bot (one session per bot; releases old bindings) |
+| `unbind [name]` | Stop outbound forwarding |
+| `send [--bot name] <text>` | Send a message manually (testing; auto-splits long text) |
+| `poll [name]` | Long-poll getUpdates, print one line per inbound message (consumed by the Monitor) |
+| `hook` | Called by the Stop/Notification hooks; routes by session_id to the owning bot |
 
-`[名]` 喺只登記咗一隻 bot 時可以省略。檔案位置:
+`[name]` can be omitted when only one bot is registered. Files:
 
-- `~/.claude/tg_bridge.json` — bots 表:每隻 bot 嘅 token + chat_id + 綁定 session(chmod 600)
-- `~/.claude/tg_bridge_state.<bot名>.json` — 每隻 bot 自己嘅 poll 進度(getUpdates offset)
+- `~/.claude/tg_bridge.json` — bot registry: token + chat_id + bound session per bot (chmod 600)
+- `~/.claude/tg_bridge_state.<name>.json` — per-bot poll offset
 
-## 安全模型
+## Security model
 
-- **Token 唔入 repo**:bot token 只存喺你本機 config,plugin 本身冇任何秘密
-- **白名單**:poll 只接受 config 入面你本人 chat_id 嘅**私聊**訊息 — 陌生人就算搵到你個 bot,講咩都會被忽略
-- **單 session 轉發**:hook 只轉發已綁定嗰一個 session,唔會將你其他 project 嘅嘢推出去;未 setup 嘅機器上 hook 係靜默 no-op
-- **網絡面**:全程只同 `api.telegram.org` 通訊
-- ⚠️ 記住:邊個攞到你 bot token 就可以扮你個 bot,唔好將 token 貼上任何公開地方
+- **No secrets in this repo** — your bot token lives only in your local config
+- **Allowlist** — the poller accepts private messages from your chat_id only; strangers who find your bot are ignored
+- **Single-session forwarding** — hooks only forward the session a bot has explicitly claimed; on machines with no config they are a silent no-op
+- **Network surface** — the script talks to `api.telegram.org` and nothing else
+- ⚠️ Anyone holding your bot token can impersonate the bot — never paste it anywhere public
 
-## 常見問題
+## FAQ
 
-**Q: 新 session 點接手?**
-A: 喺新 session 講「開 TG bridge」— Claude 會用 `bots` 查返你登記過嘅 bot 俾你揀。揀咗一隻已綁住舊 session 嘅 bot,Claude 會先提醒你「會斷開舊 session 嘅轉發」等你確認。注意舊 session 嘅監聽要停咗(閂咗舊 session 或者叫佢停),同一隻 bot 只可以有一個 poll。
+**How does a new session take over?**
+Tell it "enable the tg bridge". Claude checks the registry (`bots`), asks which bot to use, and — if that bot is bound to an older session — warns you that the old session's forwarding will be cut before proceeding. Make sure the old session's poller is stopped: one bot supports exactly one long-poll connection.
 
-**Q: 兩個 session 可唔可以同時運行?**
-A: 可以 — 開兩隻 bot(@BotFather 度 `/newbot` 多一次),每隻 bot 綁自己嘅 session。TG 度係兩個獨立 chat,邊個 chat 指揮邊個 session,清清楚楚。Bot 數量冇上限,Telegram 開 bot 免費。
+**Can two sessions run at the same time?**
+Yes — one bot per session. `/newbot` is free and takes a minute; each session gets its own TG chat.
 
-**Q: session 死咗(電腦重啓 / app 閂咗)點算?**
-A: 入站監聽寄生喺 session 入面,session 冇咗 TG 訊息就冇人接。遙距重生:用 Claude 官方手機 app 嘅 remote 功能開個新 session,叫佢「開 TG bridge」接手。官方鏈接做點火器,TG 做日常通道。
+**What if the session dies (reboot, app closed)?**
+The inbound listener lives inside the session, so a dead session means nobody is reading TG. Re-ignite remotely with the official Claude mobile app: open a new session, tell it "enable the tg bridge". Official app as the igniter, TG as the daily channel.
 
-**Q: 我唔喺電腦旁,Claude 要權限批准點算?**
-A: Notification hook 會將授權請求推去 TG 通知你,但「批准」要喺電腦發生 — 出門前建議用較寬鬆嘅 permission mode,或者配合自動授權方案。
+**Claude asked for a permission while I was away?**
+The Notification hook pushes permission requests to TG so you know, but approving happens at the computer. Before leaving, consider a more permissive permission mode.
 
-**Q: 點解唔直接用 webhook?**
-A: 長輪詢唔使公網 IP / 開 port / HTTPS 證書,喺住宅網絡同 NAT 後面都即裝即用。
+**Why long-polling instead of a webhook?**
+No public IP, no open ports, no TLS certs — works behind NAT and home networks out of the box.
 
-**Q: 支唔支援群組 / 多人?**
-A: 唔支援(刻意)。呢個係單人遙控通道,只認你本人嘅私聊。
+**Group chats / multiple people?**
+Deliberately unsupported. This is a single-operator remote-control channel.
 
-## 要求
+## Requirements
 
-- Claude Code(桌面 app 或 CLI,需有 Monitor 工具)
-- macOS / Linux + Python 3(純標準庫,冇任何 pip 依賴)
-- 一個 Telegram bot(@BotFather 免費開,一分鐘)
+- Claude Code (desktop app or CLI, with the Monitor tool)
+- macOS / Linux with Python 3 (stdlib only, nothing to pip-install)
+- A Telegram bot (free via @BotFather, takes a minute)
 
-## Repo 結構
+## Repo layout
 
 ```
 claude-tg-bridge/
-├── .claude-plugin/marketplace.json     # marketplace 入口
+├── .claude-plugin/marketplace.json     # marketplace entry
 ├── plugins/tg-bridge/
 │   ├── .claude-plugin/plugin.json      # plugin manifest
-│   ├── hooks/hooks.json                # Stop/Notification hook(自動掛,用 ${CLAUDE_PLUGIN_ROOT})
+│   ├── hooks/hooks.json                # Stop/Notification hooks (auto-wired via ${CLAUDE_PLUGIN_ROOT})
 │   └── skills/tg-bridge/
-│       ├── SKILL.md                    # 教 Claude 安裝/開啓/排障嘅完整流程
-│       └── scripts/tg_bridge.py        # 橋接核心(~220 行,零依賴)
+│       ├── SKILL.md                    # the full setup/re-enable/troubleshooting playbook for Claude
+│       └── scripts/tg_bridge.py        # the bridge core (~250 lines, zero deps)
 └── README.md
 ```
 
