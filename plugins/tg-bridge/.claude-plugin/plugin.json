@@ -1,0 +1,9 @@
+{
+  "name": "tg-bridge",
+  "description": "Telegram ⇆ Claude Code session 雙向橋接:出站用 Stop hook 自動轉發 Claude 回覆去 TG,入站用 Monitor 長輪詢將 TG 訊息變成 session 事件。Two-way Telegram bridge for Claude Code sessions.",
+  "version": "1.0.0",
+  "author": {
+    "name": "IfeyChan702",
+    "url": "https://github.com/IfeyChan702"
+  }
+}

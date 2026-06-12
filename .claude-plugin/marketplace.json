@@ -1,0 +1,15 @@
+{
+  "name": "claude-tg-bridge",
+  "owner": {
+    "name": "IfeyChan702",
+    "url": "https://github.com/IfeyChan702"
+  },
+  "plugins": [
+    {
+      "name": "tg-bridge",
+      "source": "./plugins/tg-bridge",
+      "description": "Telegram ⇆ Claude Code session 雙向橋接:唔喺電腦旁邊時,喺 TG 收 Claude 回覆、打字繼續指揮任務。Two-way bridge between a Claude Code session and Telegram.",
+      "version": "1.0.0"
+    }
+  ]
+}
