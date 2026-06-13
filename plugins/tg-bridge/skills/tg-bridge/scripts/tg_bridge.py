@@ -291,7 +291,7 @@ def last_assistant_text(transcript_path):
 
 
 def cmd_hook():
-    """Stop / Notification hook 入口。任何情況都要靜靜地 exit 0,唔可以阻住 Claude。"""
+    """Stop / Notification / PreToolUse hook 入口。任何情況都要靜靜地 exit 0,唔可以阻住 Claude。"""
     try:
         payload = json.load(sys.stdin)
     except ValueError:
@@ -305,6 +305,20 @@ def cmd_hook():
     if not bot:
         return  # 呢個 session 冇 bot 認領 → 唔出聲
     event = payload.get("hook_event_name", "")
+    if event == "PreToolUse":
+        # AskUserQuestion 係 UI 彈窗:Stop hook 唔會 fire、TG 回覆又撳唔到佢,
+        # 橋接緊嘅 session 會就咁卡死。擋走佢,叫 Claude 行返文字問答回路。
+        if payload.get("tool_name") == "AskUserQuestion":
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    "呢個 session 已橋接咗 Telegram,用戶可能唔喺電腦旁,彈窗式提問佢見唔到、"
+                    "session 會卡死。請改用普通文字提問:列出所有選項並用 1/2/3 編號,"
+                    "講明回覆數字即可,然後結束你嘅 turn — 問題會自動轉發去 TG,"
+                    "用戶回覆會以「📩 TG 回覆」事件返嚟。唔好再調用 AskUserQuestion。"),
+            }}, ensure_ascii=False))
+        return
     if event == "Notification":
         msg = payload.get("message") or ""
         if "permission" in msg.lower():  # 只轉發授權請求,閒置提示唔好嘈

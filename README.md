@@ -83,7 +83,7 @@ The core is one zero-dependency script (`skills/tg-bridge/scripts/tg_bridge.py`)
 | `unbind [name]` | Stop outbound forwarding |
 | `send [--bot name] <text>` | Send a message manually (testing; auto-splits long text) |
 | `poll [name]` | Long-poll getUpdates, print one line per inbound message (consumed by the Monitor) |
-| `hook` | Called by the Stop/Notification hooks; routes by session_id to the owning bot |
+| `hook` | Called by the Stop/Notification/PreToolUse hooks; routes by session_id to the owning bot |
 
 `[name]` can be omitted when only one bot is registered. Files:
 
@@ -112,6 +112,9 @@ The inbound listener lives inside the session, so a dead session means nobody is
 **Claude asked for a permission while I was away?**
 The Notification hook pushes permission requests to TG so you know, but approving happens at the computer. Before leaving, consider a more permissive permission mode.
 
+**Claude wanted to ask me a multiple-choice question while I was away?**
+Popup questions (AskUserQuestion) can't be answered from TG, so a synchronous PreToolUse hook blocks them for bridged sessions and tells Claude to ask in plain text with numbered options instead. The question reaches TG like any other reply — answer with the option number. Unbridged sessions keep the normal popup.
+
 **Why long-polling instead of a webhook?**
 No public IP, no open ports, no TLS certs — works behind NAT and home networks out of the box.
 
@@ -131,7 +134,7 @@ claude-tg-bridge/
 ├── .claude-plugin/marketplace.json     # marketplace entry
 ├── plugins/tg-bridge/
 │   ├── .claude-plugin/plugin.json      # plugin manifest
-│   ├── hooks/hooks.json                # Stop/Notification hooks (auto-wired via ${CLAUDE_PLUGIN_ROOT})
+│   ├── hooks/hooks.json                # Stop/Notification/PreToolUse hooks (auto-wired via ${CLAUDE_PLUGIN_ROOT})
 │   └── skills/tg-bridge/
 │       ├── SKILL.md                    # the full setup/re-enable/troubleshooting playbook for Claude
 │       └── scripts/tg_bridge.py        # the bridge core (~250 lines, zero deps)
